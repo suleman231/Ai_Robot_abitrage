@@ -10,9 +10,8 @@ export const analyzeMarketWithGemini = async (
   retries = 3,
   delay = 2000
 ): Promise<AIAnalysis> => {
-  // Use a new instance to ensure we pick up any updated API key from the environment
-  const apiKey = (process.env as any).API_KEY;
-  const ai = new GoogleGenAI({ apiKey });
+  // Always initialize with the latest API_KEY from process.env
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const prompt = `
     As a world-class AI Quant Trading Robot, analyze this real-time market telemetry:
@@ -65,8 +64,7 @@ export const analyzeMarketWithGemini = async (
     const text = response.text;
     if (!text) throw new Error("Empty response from AI");
     
-    const cleanedJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
-    return JSON.parse(cleanedJson);
+    return JSON.parse(text);
   } catch (error: any) {
     if (retries > 0 && (error?.status === 429 || error?.message?.includes('429') || error?.message?.includes('quota'))) {
       await sleep(delay);
