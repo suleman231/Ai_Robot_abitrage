@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { CoinData, ArbitrageOpportunity, TradeRecord, AIAnalysis, UserProfile, SpotSignal } from './types';
+import { CoinData, ArbitrageOpportunity, TradeRecord, AIAnalysis, UserProfile, SpotSignal, ExchangeKeys } from './types';
 import { COINS, EXCHANGES, EXCHANGE_BRANDS, FEE_PERCENTAGE, FIXED_NETWORK_FEE } from './constants.tsx';
 import MarketGrid from './components/MarketGrid';
 import TradeLogs from './components/TradeLogs';
@@ -15,6 +14,15 @@ const hexToRgb = (hex: string) => {
   return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : '34, 197, 94';
 };
 
+const THEME_PRESETS = [
+  { name: 'Emerald', color: '#22c55e' },
+  { name: 'Cyber', color: '#ec4899' },
+  { name: 'Volt', color: '#eab308' },
+  { name: 'Ocean', color: '#06b6d4' },
+  { name: 'Plasma', color: '#8b5cf6' },
+  { name: 'Crimson', color: '#ef4444' },
+];
+
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<'ARBITRAGE' | 'INTRA'>('ARBITRAGE');
   const [selectedExchange, setSelectedExchange] = useState<string>(EXCHANGES[0]);
@@ -27,15 +35,13 @@ const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [pulse, setPulse] = useState(false);
   const [hasSelectedKey, setHasSelectedKey] = useState(false);
-  const [quotaError, setQuotaError] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [uptime, setUptime] = useState('00:00:00');
   const [latency, setLatency] = useState(5);
-  const [expandedExchange, setExpandedExchange] = useState<string | null>(null);
+  const [expandedExchangeKey, setExpandedExchangeKey] = useState<string | null>(null);
   
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [aiCooldown, setAiCooldown] = useState(false);
 
   const lastTradeTimeRef = useRef(0);
   const sessionStartRef = useRef(Date.now());
@@ -91,17 +97,6 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const checkKey = async () => {
-      const aistudio = (window as any).aistudio;
-      if (aistudio?.hasSelectedApiKey) {
-        const hasKey = await aistudio.hasSelectedApiKey();
-        setHasSelectedKey(hasKey);
-      }
-    };
-    checkKey();
-  }, []);
-
-  useEffect(() => {
     document.documentElement.style.setProperty('--primary-color', userProfile.themeColor);
     const rgb = hexToRgb(userProfile.themeColor);
     document.documentElement.style.setProperty('--primary-rgb', rgb);
@@ -135,28 +130,17 @@ const App: React.FC = () => {
   }, []);
 
   const runAiAnalysis = useCallback(async () => {
-    if (isAnalyzing || aiCooldown || !userProfile.settings.enableAiGuidance) return;
+    if (isAnalyzing || !userProfile.settings.enableAiGuidance) return;
     setIsAnalyzing(true);
     try {
       const result = await analyzeMarketWithGemini(opportunitiesRef.current, marketsRef.current.slice(0, 5));
       setAiAnalysis(result);
-      if (result.reasoning.includes("saturated")) {
-        setQuotaError(true);
-        setAiCooldown(true);
-        setTimeout(() => setAiCooldown(false), 60000);
-      } else {
-        setQuotaError(false);
-      }
-    } catch (e: any) {
-      if (e?.message?.includes('429')) {
-        setQuotaError(true);
-        setAiCooldown(true);
-        setTimeout(() => setAiCooldown(false), 60000);
-      }
+    } catch (e) {
+      console.error(e);
     } finally {
       setIsAnalyzing(false);
     }
-  }, [isAnalyzing, aiCooldown, userProfile.settings.enableAiGuidance]);
+  }, [isAnalyzing, userProfile.settings.enableAiGuidance]);
 
   useEffect(() => {
     const interval = setInterval(runAiAnalysis, 45000);
@@ -190,7 +174,7 @@ const App: React.FC = () => {
       sellEx = customSellEx || 'HFT-NODE';
     }
 
-    if (profit <= 0.0001) return;
+    if (profit <= 0) return;
 
     lastTradeTimeRef.current = now;
     setPulse(true);
@@ -242,7 +226,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!autoTrade) return;
-    if (currentView === 'ARBITRAGE' && userProfile.settings.tradingMode !== 'SPOT' && opportunities.length > 0) {
+    if (currentView === 'ARBITRAGE' && opportunities.length > 0) {
       executeTrade(opportunities[0], 'ARB');
     }
   }, [autoTrade, opportunities, currentView, executeTrade]);
@@ -257,130 +241,156 @@ const App: React.FC = () => {
     return mapped.slice(-20);
   }, [trades]);
 
+  const updateExchangeKey = (exchange: string, field: 'apiKey' | 'apiSecret', value: string) => {
+    setUserProfile(prev => ({
+      ...prev,
+      keys: prev.keys.map(k => k.exchange === exchange ? { ...k, [field]: value, isLinked: true, status: 'CONNECTED' as const } : k)
+    }));
+  };
+
   return (
     <div className="min-h-screen p-3 md:p-8 space-y-4 md:space-y-6 max-w-7xl mx-auto bg-slate-950 text-slate-100 font-sans">
       
-      {/* LEFT SIDE CONFIG DRAWER */}
+      {/* SIDE SETTINGS DRAWER */}
       {showSettings && (
         <div className="fixed inset-0 z-[100] flex items-stretch justify-start overflow-hidden">
-          <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity" onClick={() => setShowSettings(false)}></div>
-          <div className="relative z-10 bg-slate-900 border-r border-slate-800 w-full max-w-md shadow-[20px_0_50px_rgba(0,0,0,0.5)] flex flex-col h-full animate-in slide-in-from-left duration-300 ease-out">
-            <div className="p-6 md:p-8 border-b border-slate-800 flex justify-between items-center bg-slate-950/40 shrink-0">
-              <div className="flex items-center gap-4">
-                 <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shadow-[0_0_15px_rgba(var(--primary-rgb),0.2)]">
-                    <i className="fa-solid fa-microchip text-lg md:text-xl"></i>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setShowSettings(false)}></div>
+          <div className="relative z-10 bg-slate-900 border-r border-slate-800 w-full max-w-md shadow-2xl flex flex-col h-full animate-in slide-in-from-left duration-300">
+            <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
+              <div className="flex items-center gap-3">
+                 <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary border border-primary/20">
+                    <i className="fa-solid fa-user-gear"></i>
                  </div>
-                 <div>
-                    <h2 className="text-lg md:text-xl font-black italic tracking-tighter uppercase">Identity_Node</h2>
-                    <p className="text-[9px] md:text-[10px] font-black uppercase text-slate-500 tracking-widest">Configuration Drawer</p>
-                 </div>
+                 <h2 className="text-xl font-black italic tracking-tighter uppercase">Node_Settings</h2>
               </div>
-              <button onClick={() => setShowSettings(false)} className="w-10 h-10 rounded-full hover:bg-slate-800 flex items-center justify-center text-slate-500 transition-colors">
-                <i className="fa-solid fa-chevron-left"></i>
+              <button onClick={() => setShowSettings(false)} className="w-10 h-10 rounded-full hover:bg-slate-800 flex items-center justify-center transition-colors">
+                <i className="fa-solid fa-xmark"></i>
               </button>
             </div>
             
-            <div className="p-6 md:p-8 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
-              <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-2xl mb-2">
-                 <h4 className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-3">Pre-flight Diagnostics</h4>
-                 <div className="grid grid-cols-2 gap-2">
-                    <div className="flex items-center gap-2">
-                       <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
-                       <span className="text-[9px] font-bold text-slate-400">NODE_OK</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                       <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
-                       <span className="text-[9px] font-bold text-slate-400">TELEMETRY_LINKED</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                       <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
-                       <span className="text-[9px] font-bold text-slate-400">SECURE_SSL</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                       <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></div>
-                       <span className="text-[9px] font-bold text-primary">HFT_SIM_ACTIVE</span>
-                    </div>
-                 </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
+              {/* THEME SELECTOR - VERY SMALL GRAPHICS */}
+              <div className="space-y-3">
+                <h4 className="text-[9px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                  <i className="fa-solid fa-palette text-primary"></i> UI_Node_Theme
+                </h4>
+                <div className="bg-slate-950/40 p-3 rounded-2xl border border-slate-800/50 flex flex-wrap gap-2.5">
+                  {THEME_PRESETS.map((t) => (
+                    <button 
+                      key={t.name}
+                      onClick={() => setUserProfile({ ...userProfile, themeColor: t.color })}
+                      title={t.name}
+                      className={`group w-6 h-6 rounded-lg border-2 transition-all relative flex items-center justify-center ${userProfile.themeColor === t.color ? 'border-primary scale-110 shadow-[0_0_10px_rgba(var(--primary-rgb),0.3)]' : 'border-transparent hover:border-slate-600'}`}
+                    >
+                      <div className="w-full h-full rounded-[4px] shadow-inner" style={{ backgroundColor: t.color }}></div>
+                      {userProfile.themeColor === t.color && (
+                        <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-primary rounded-full flex items-center justify-center border border-slate-900">
+                           <i className="fa-solid fa-check text-slate-900 text-[6px]"></i>
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <div className="p-6 bg-slate-950/40 border border-slate-800 rounded-2xl space-y-6">
-                <h4 className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Operational Protocol</h4>
-                <div className="space-y-6">
-                   <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                        <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Trade Unit</span>
-                        <div className="flex items-center gap-1.5">
-                           <span className="text-[8px] font-black text-slate-600">$</span>
-                           <input 
-                             type="number"
-                             value={tradeAmount}
-                             onChange={(e) => setTradeAmount(Math.max(1, parseInt(e.target.value) || 1))}
-                             className="w-14 bg-slate-900 border border-slate-800 rounded px-1.5 py-1 text-[9px] font-black mono text-primary outline-none focus:border-primary/50 text-right"
-                           />
+              {/* API KEYS MANAGEMENT */}
+              <div className="space-y-4">
+                <h4 className="text-[9px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                  <i className="fa-solid fa-key text-primary"></i> API_Credentials
+                </h4>
+                <div className="space-y-2">
+                  {userProfile.keys.map((k) => (
+                    <div key={k.exchange} className={`border rounded-2xl overflow-hidden transition-all duration-300 ${expandedExchangeKey === k.exchange ? 'bg-slate-950/60 border-primary/40 shadow-lg' : 'bg-slate-950/20 border-slate-800/60'}`}>
+                      <button 
+                        onClick={() => setExpandedExchangeKey(expandedExchangeKey === k.exchange ? null : k.exchange)}
+                        className="w-full p-4 flex items-center justify-between hover:bg-slate-800/20 transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-6 h-6 flex items-center justify-center">
+                            <i className={`${EXCHANGE_BRANDS[k.exchange]?.icon} ${EXCHANGE_BRANDS[k.exchange]?.color} text-sm`}></i>
+                          </div>
+                          <span className="text-[10px] font-black uppercase text-slate-200">{k.exchange}</span>
                         </div>
-                      </div>
-                      <input type="range" min="1" max="500" step="1" value={tradeAmount} onChange={(e) => setTradeAmount(parseInt(e.target.value))} className="w-full accent-primary h-1 bg-slate-800 rounded-full appearance-none cursor-pointer" />
-                      <div className="flex justify-between items-center pt-1">
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-1.5 h-1.5 rounded-full bg-yellow-500/40"></div>
-                          <span className="text-[7px] font-black text-slate-500 uppercase">Break-even Spread:</span>
+                        <div className="flex items-center gap-3">
+                          {k.isLinked && <span className="text-[7px] font-black text-green-500 uppercase border border-green-500/20 px-1.5 py-0.5 rounded bg-green-500/5">Linked</span>}
+                          <i className={`fa-solid fa-chevron-down text-[8px] transition-transform duration-300 ${expandedExchangeKey === k.exchange ? 'rotate-180 text-primary' : 'text-slate-600'}`}></i>
                         </div>
-                        <span className="text-[8px] font-black text-primary mono">{breakEvenSpread.toFixed(3)}%</span>
-                      </div>
-                   </div>
-
-                   <div className="space-y-3">
-                      <div className="flex justify-between">
-                        <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Min Profit Trigger</span>
-                        <span className="text-[8px] font-black text-primary">{userProfile.settings.minSpread}%</span>
-                      </div>
-                      <input type="range" min="0.05" max="1.0" step="0.05" value={userProfile.settings.minSpread} onChange={(e) => setUserProfile({...userProfile, settings: {...userProfile.settings, minSpread: parseFloat(e.target.value)}})} className="w-full accent-primary h-1 bg-slate-800 rounded-full appearance-none cursor-pointer" />
-                   </div>
+                      </button>
+                      
+                      {expandedExchangeKey === k.exchange && (
+                        <div className="p-4 pt-0 space-y-3 animate-in fade-in slide-in-from-top-2">
+                          <div className="space-y-1">
+                            <label className="text-[7px] font-black text-slate-600 uppercase tracking-widest pl-1">API_KEY</label>
+                            <input 
+                              type="password"
+                              value={k.apiKey}
+                              onChange={(e) => updateExchangeKey(k.exchange, 'apiKey', e.target.value)}
+                              placeholder="••••••••••••••••"
+                              className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-[10px] mono text-slate-200 outline-none focus:border-primary/50"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[7px] font-black text-slate-600 uppercase tracking-widest pl-1">API_SECRET</label>
+                            <input 
+                              type="password"
+                              value={k.apiSecret}
+                              onChange={(e) => updateExchangeKey(k.exchange, 'apiSecret', e.target.value)}
+                              placeholder="••••••••••••••••"
+                              className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-[10px] mono text-slate-200 outline-none focus:border-primary/50"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
 
-            <div className="p-6 md:p-8 bg-slate-950/40 border-t border-slate-800 flex justify-between items-center shrink-0">
-               <button onClick={() => window.location.reload()} className="px-5 py-3 bg-red-950/20 text-red-500 border border-red-900/20 font-black text-[8px] tracking-widest rounded-xl hover:bg-red-500 hover:text-white transition-all uppercase">Flush</button>
-               <button onClick={() => setShowSettings(false)} className="px-8 py-3 bg-primary text-slate-950 font-black text-[10px] tracking-widest rounded-xl shadow-lg hover:scale-105 active:scale-95 transition-all uppercase">Deploy</button>
+            <div className="p-6 border-t border-slate-800 bg-slate-950/50">
+               <button 
+                 onClick={() => setShowSettings(false)}
+                 className="w-full py-4 bg-primary text-slate-950 font-black text-xs uppercase tracking-widest rounded-2xl shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+               >
+                 Save & Initialize
+               </button>
             </div>
           </div>
         </div>
       )}
 
       {/* HEADER HUD */}
-      <header className={`relative z-10 flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-4 bg-slate-900/40 backdrop-blur-3xl border ${pulse ? 'border-primary shadow-[0_0_30px_rgba(var(--primary-rgb),0.1)]' : 'border-slate-800'} p-4 md:p-6 rounded-[2rem] md:rounded-[3rem] transition-all duration-300`}>
-        <div className="flex items-center justify-between lg:justify-start gap-3 md:gap-6">
-          <button onClick={() => setShowSettings(true)} className="flex items-center gap-2 md:gap-4 p-2 pr-4 md:pr-6 rounded-[1.2rem] bg-primary/5 border border-primary/20 hover:border-primary/60 hover:bg-primary/10 transition-all group active:scale-95 shadow-lg">
-            <div className="w-10 h-10 md:w-12 md:h-12 rounded-lg bg-slate-900 flex items-center justify-center border-2 border-primary/20 group-hover:border-primary/50 transition-all relative">
+      <header className={`relative z-10 flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-4 bg-slate-900/40 backdrop-blur-3xl border ${pulse ? 'border-primary' : 'border-slate-800'} p-4 md:p-6 rounded-[2rem] transition-all duration-300`}>
+        <div className="flex items-center justify-between lg:justify-start gap-4">
+          <button onClick={() => setShowSettings(true)} className="flex items-center gap-4 p-2 pr-6 rounded-2xl bg-primary/5 border border-primary/20 hover:border-primary/60 transition-all group">
+            <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center border-2 border-primary/20 group-hover:border-primary/50 transition-all">
               <i className="fa-solid fa-microchip text-primary text-lg"></i>
-              <div className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-slate-950 bg-green-500 animate-pulse`}></div>
             </div>
-            <div className="text-left hidden xs:block">
-              <p className="text-[9px] md:text-[10px] font-black text-slate-100 uppercase mb-0.5">{userProfile.username}</p>
-              <span className="text-[7px] font-black text-slate-500 uppercase tracking-widest">Live_Feed</span>
+            <div className="text-left">
+              <p className="text-[10px] font-black text-slate-100 uppercase">{userProfile.username}</p>
+              <span className="text-[7px] font-black text-slate-500 uppercase tracking-widest">Profile & Node</span>
             </div>
           </button>
 
-          <div className="flex items-center gap-3 md:gap-5">
-            <button onClick={() => setCurrentView(currentView === 'ARBITRAGE' ? 'INTRA' : 'ARBITRAGE')} className={`relative w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-slate-900 flex items-center justify-center border-2 transition-all duration-500 group/logo overflow-hidden active:scale-90 ${currentView === 'INTRA' ? 'border-primary shadow-[0_0_30px_rgba(var(--primary-color),0.3)]' : 'border-slate-700 hover:border-slate-400'}`}>
-              <i className={`fa-solid fa-atom text-lg md:text-xl relative z-10 transition-all duration-500 ${currentView === 'INTRA' ? 'text-primary rotate-180' : 'text-slate-600'}`}></i>
+          <div className="flex items-center gap-4">
+            <button onClick={() => setCurrentView(currentView === 'ARBITRAGE' ? 'INTRA' : 'ARBITRAGE')} className={`w-12 h-12 rounded-2xl bg-slate-900 flex items-center justify-center border-2 transition-all duration-500 ${currentView === 'INTRA' ? 'border-primary' : 'border-slate-700'}`}>
+              <i className={`fa-solid fa-atom text-xl ${currentView === 'INTRA' ? 'text-primary' : 'text-slate-600'}`}></i>
             </button>
             <div className="flex flex-col">
-              <h1 className="text-lg md:text-2xl font-black italic tracking-tighter uppercase text-white leading-none">Quant<span className="text-primary">Robot</span></h1>
-              <span className="text-[7px] font-black mono text-slate-400 uppercase mt-1">{uptime} | NODE_HEALTH: 100%</span>
+              <h1 className="text-xl md:text-2xl font-black italic tracking-tighter uppercase text-white leading-none">Quant<span className="text-primary">Robot</span></h1>
+              <span className="text-[7px] font-black mono text-slate-400 mt-1">{uptime} | LATENCY: {latency}ms</span>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-4 w-full lg:w-auto">
-           <div className="flex flex-1 items-center justify-between gap-4 bg-slate-950/60 p-4 rounded-[1.5rem] border border-slate-800/50 pr-6">
-             <div className="text-left md:text-right">
-                <p className="text-[8px] text-slate-500 uppercase font-black tracking-[0.2em]">Balance</p>
-                <p className="text-xl md:text-2xl font-black mono text-primary tracking-tighter">${balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+        <div className="flex items-center gap-4">
+           <div className="flex flex-1 lg:w-64 items-center justify-between gap-4 bg-slate-950/60 p-4 rounded-3xl border border-slate-800/50">
+             <div>
+                <p className="text-[8px] text-slate-500 uppercase font-black tracking-widest">Balance</p>
+                <p className="text-xl font-black mono text-primary">${balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
              </div>
-             <button onClick={() => setAutoTrade(!autoTrade)} className={`w-9 h-9 rounded-full transition-all active:scale-90 flex items-center justify-center border-2 ${autoTrade ? 'bg-red-600 border-red-400 text-white shadow-[0_0_15px_rgba(239,68,68,0.3)]' : 'bg-primary border-green-300 text-white shadow-[0_0_15px_rgba(34,197,94,0.3)]'}`}>
-               <i className={`fa-solid ${autoTrade ? 'fa-stop text-[10px]' : 'fa-play text-[10px] ml-0.5'}`}></i>
+             <button onClick={() => setAutoTrade(!autoTrade)} className={`w-10 h-10 rounded-full transition-all flex items-center justify-center border-2 ${autoTrade ? 'bg-red-600 border-red-400 text-white shadow-lg' : 'bg-primary border-green-300 text-white shadow-lg'}`}>
+               <i className={`fa-solid ${autoTrade ? 'fa-stop' : 'fa-play ml-1'}`}></i>
              </button>
            </div>
         </div>
@@ -388,8 +398,8 @@ const App: React.FC = () => {
 
       {/* DASHBOARD VIEWS */}
       {currentView === 'ARBITRAGE' ? (
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 md:gap-6">
-          <div className="lg:col-span-1 space-y-4 md:space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="lg:col-span-1 space-y-6">
             <div className="bg-slate-900/60 border border-slate-800 rounded-[2.5rem] p-8 shadow-xl">
                <h3 className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-6 border-b border-slate-800 pb-4 italic">Telemetry</h3>
                <div className="space-y-6">
@@ -399,7 +409,7 @@ const App: React.FC = () => {
                   </div>
                   <div className="w-full relative">
                     {isMounted && (
-                      <ResponsiveContainer width="99%" aspect={1.5} minHeight={100} minWidth={0}>
+                      <ResponsiveContainer width="99%" aspect={1.5}>
                         <AreaChart data={pnlHistory}>
                           <Area type="monotone" dataKey="pnl" stroke="var(--primary-color)" fill="var(--primary-color)" fillOpacity={0.1} strokeWidth={2} isAnimationActive={false} />
                         </AreaChart>
@@ -409,52 +419,41 @@ const App: React.FC = () => {
                </div>
             </div>
 
-            <div className="bg-slate-900/60 border border-slate-800 rounded-[2.5rem] p-8 shadow-xl flex flex-col min-h-[280px]">
+            <div className="bg-slate-900/60 border border-slate-800 rounded-[2.5rem] p-8 shadow-xl">
                <div className="flex justify-between items-center mb-6">
                  <h3 className="text-[9px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2 italic">
                    <i className={`fa-solid fa-atom ${isAnalyzing ? 'animate-spin-slow text-primary' : 'text-slate-400'}`}></i> Neural_Core
                  </h3>
-                 <button onClick={runAiAnalysis} className="text-[8px] font-black text-primary uppercase hover:opacity-70">Refresh AI</button>
                </div>
-               
-               {aiAnalysis ? (
-                 <div className="space-y-4 flex-1 flex flex-col justify-end">
+               {aiAnalysis && (
+                 <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-2">
                       <div className="bg-slate-950/40 p-2 rounded-lg border border-slate-800/50 text-center">
-                        <p className="text-[7px] font-black text-slate-600 uppercase mb-1">Sentiment</p>
                         <p className={`text-[9px] font-black ${aiAnalysis.sentiment === 'BULLISH' ? 'text-green-400' : 'text-red-400'}`}>{aiAnalysis.sentiment}</p>
                       </div>
                       <div className="bg-slate-950/40 p-2 rounded-lg border border-slate-800/50 text-center">
-                        <p className="text-[7px] font-black text-slate-600 uppercase mb-1">Risk Node</p>
                         <p className="text-[9px] font-black text-yellow-400">{aiAnalysis.riskLevel}</p>
                       </div>
                     </div>
-                    <div className="p-4 bg-slate-950/80 rounded-2xl border border-slate-800/50">
-                      <p className="text-[10px] text-slate-400 leading-relaxed italic font-medium mono h-24 overflow-y-auto custom-scrollbar">{aiAnalysis.reasoning}</p>
-                    </div>
-                 </div>
-               ) : (
-                 <div className="flex-1 flex flex-col items-center justify-center text-center opacity-40">
-                   <i className="fa-solid fa-brain text-slate-700 text-2xl mb-2 animate-pulse"></i>
-                   <p className="text-[8px] font-black text-slate-700 uppercase tracking-widest">Neural Link Syncing...</p>
+                    <p className="text-[10px] text-slate-400 leading-relaxed italic font-medium mono h-24 overflow-y-auto custom-scrollbar">{aiAnalysis.reasoning}</p>
                  </div>
                )}
             </div>
           </div>
 
-          <div className="lg:col-span-3 space-y-4 md:space-y-6">
-             <div className="bg-slate-900/60 border border-slate-800 rounded-[2.5rem] p-6 md:p-8">
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
+          <div className="lg:col-span-3 space-y-6">
+             <div className="bg-slate-900/60 border border-slate-800 rounded-[2.5rem] p-8">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
                   {opportunities.slice(0, 3).map(opp => (
-                    <div key={opp.id} className="p-5 bg-slate-950/80 border border-slate-800 rounded-[1.8rem] hover:border-primary/40 transition-all group">
-                       <div className="flex justify-between items-center mb-3">
+                    <div key={opp.id} className="p-6 bg-slate-950/80 border border-slate-800 rounded-[2rem] hover:border-primary/40 transition-all group">
+                       <div className="flex justify-between items-center mb-4">
                           <span className="text-xl font-black italic tracking-tighter text-slate-100">{opp.coin}</span>
                           <span className="text-[9px] font-black text-green-500 bg-green-500/10 px-2 py-0.5 rounded">+{opp.spreadPercentage.toFixed(2)}%</span>
                        </div>
-                       <div className="flex items-center justify-between gap-2 mb-4 text-[10px]">
-                          <i className={`${EXCHANGE_BRANDS[opp.buyFrom]?.icon} ${EXCHANGE_BRANDS[opp.buyFrom]?.color}`}></i>
-                          <div className="h-[1px] flex-1 bg-slate-800 mx-2"></div>
-                          <i className={`${EXCHANGE_BRANDS[opp.sellTo]?.icon} ${EXCHANGE_BRANDS[opp.sellTo]?.color}`}></i>
+                       <div className="flex items-center justify-between gap-2 mb-4">
+                          <i className={`${EXCHANGE_BRANDS[opp.buyFrom]?.icon} ${EXCHANGE_BRANDS[opp.buyFrom]?.color} text-sm`}></i>
+                          <div className="h-[1px] flex-1 bg-slate-800"></div>
+                          <i className={`${EXCHANGE_BRANDS[opp.sellTo]?.icon} ${EXCHANGE_BRANDS[opp.sellTo]?.color} text-sm`}></i>
                        </div>
                        <div className="pt-3 border-t border-slate-800 flex justify-between items-center">
                         <span className="text-[8px] font-black text-slate-700 uppercase">Yield</span>
@@ -472,17 +471,15 @@ const App: React.FC = () => {
         </div>
       </div>
       ) : (
-        <div className="animate-in fade-in slide-in-from-bottom-2 duration-700">
-           <IntraExchangeView 
-             selectedExchange={selectedExchange} 
-             onExchangeChange={setSelectedExchange} 
-             markets={markets}
-             trades={trades}
-             onManualExecute={(sig) => executeTrade(sig, 'SPOT', selectedExchange, selectedExchange)}
-             tradeAmount={tradeAmount}
-             onTradeAmountChange={setTradeAmount}
-           />
-        </div>
+        <IntraExchangeView 
+          selectedExchange={selectedExchange} 
+          onExchangeChange={setSelectedExchange} 
+          markets={markets}
+          trades={trades}
+          onManualExecute={(sig) => executeTrade(sig, 'SPOT', selectedExchange, selectedExchange)}
+          tradeAmount={tradeAmount}
+          onTradeAmountChange={setTradeAmount}
+        />
       )}
     </div>
   );
