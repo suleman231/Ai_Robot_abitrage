@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { CoinData, ArbitrageOpportunity, TradeRecord, AIAnalysis, UserProfile, SpotSignal } from './types';
@@ -85,9 +86,19 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // Ensuring a clean mount to allow parents to settle for Recharts
     const timer = setTimeout(() => setIsMounted(true), 300);
     return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const checkKey = async () => {
+      const aistudio = (window as any).aistudio;
+      if (aistudio?.hasSelectedApiKey) {
+        const hasKey = await aistudio.hasSelectedApiKey();
+        setHasSelectedKey(hasKey);
+      }
+    };
+    checkKey();
   }, []);
 
   useEffect(() => {
@@ -270,7 +281,6 @@ const App: React.FC = () => {
             </div>
             
             <div className="p-6 md:p-8 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
-              {/* SYSTEM PRE-FLIGHT STATUS */}
               <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-2xl mb-2">
                  <h4 className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-3">Pre-flight Diagnostics</h4>
                  <div className="grid grid-cols-2 gap-2">
@@ -389,7 +399,7 @@ const App: React.FC = () => {
                   </div>
                   <div className="w-full relative">
                     {isMounted && (
-                      <ResponsiveContainer width="100%" aspect={1.5} minHeight={100}>
+                      <ResponsiveContainer width="99%" aspect={1.5} minHeight={100} minWidth={0}>
                         <AreaChart data={pnlHistory}>
                           <Area type="monotone" dataKey="pnl" stroke="var(--primary-color)" fill="var(--primary-color)" fillOpacity={0.1} strokeWidth={2} isAnimationActive={false} />
                         </AreaChart>

@@ -11,7 +11,8 @@ export const analyzeMarketWithGemini = async (
   delay = 2000
 ): Promise<AIAnalysis> => {
   // Use a new instance to ensure we pick up any updated API key from the environment
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = (process.env as any).API_KEY;
+  const ai = new GoogleGenAI({ apiKey });
   
   const prompt = `
     As a world-class AI Quant Trading Robot, analyze this real-time market telemetry:
@@ -30,8 +31,6 @@ export const analyzeMarketWithGemini = async (
 
   try {
     const response = await ai.models.generateContent({
-      // Switching to Flash for frequent background analysis to avoid quota issues (429)
-      // Flash is faster and has higher rate limits.
       model: "gemini-3-flash-preview",
       contents: prompt,
       config: {
@@ -69,14 +68,11 @@ export const analyzeMarketWithGemini = async (
     const cleanedJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
     return JSON.parse(cleanedJson);
   } catch (error: any) {
-    // Handle 429 Quota Exceeded specifically with a retry
     if (retries > 0 && (error?.status === 429 || error?.message?.includes('429') || error?.message?.includes('quota'))) {
-      console.warn(`Quota exceeded. Retrying in ${delay}ms... (${retries} retries left)`);
       await sleep(delay);
       return analyzeMarketWithGemini(opportunities, marketStats, retries - 1, delay * 2);
     }
 
-    console.error("Gemini analysis failed:", error);
     return {
       sentiment: 'NEUTRAL',
       reasoning: 'HFT Logic active. Neural link temporarily saturated; proceeding with local heuristic analysis.',
