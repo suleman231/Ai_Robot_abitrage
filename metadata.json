@@ -1,0 +1,5 @@
+{
+  "name": "QuantRobot V3: Micro-Arb Node",
+  "description": "A high-frequency AI robot specialized in $10 arbitrage and spot trading. Features a Profitability Guard to ensure net revenue after fees, real-time Gemini neural analysis, and a HFT simulation environment.",
+  "requestFramePermissions": []
+}
