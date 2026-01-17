@@ -77,3 +77,12 @@ export interface UserProfile {
   keys: ExchangeKeys[];
   settings: BotSettings;
 }
+
+export type ViewType = 'ARBITRAGE' | 'INTRA' | 'ADMIN';
+
+export interface AdminStats {
+  threadUtilization: number;
+  neuralThroughput: number;
+  bufferLoad: number;
+  uptimeSeconds: number;
+}
