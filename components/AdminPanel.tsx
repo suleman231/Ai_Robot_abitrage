@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { EXCHANGES, EXCHANGE_BRANDS } from '../constants.tsx';
+import { EXCHANGES, EXCHANGE_BRANDS } from '../constants';
 import { UserProfile, AdminStats } from '../types';
 
 interface AdminPanelProps {

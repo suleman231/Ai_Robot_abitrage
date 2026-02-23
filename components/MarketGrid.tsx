@@ -1,6 +1,6 @@
 import React from 'react';
 import { CoinData } from '../types';
-import { EXCHANGE_BRANDS } from '../constants.tsx';
+import { EXCHANGE_BRANDS } from '../constants';
 
 interface MarketGridProps {
   markets: CoinData[];

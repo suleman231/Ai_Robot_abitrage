@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { TradeRecord } from '../types';
-import { COINS, EXCHANGE_BRANDS } from '../constants.tsx';
+import { COINS, EXCHANGE_BRANDS } from '../constants';
 
 interface TradeLogsProps {
   trades: TradeRecord[];

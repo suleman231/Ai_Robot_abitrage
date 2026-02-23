@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { CoinData, ArbitrageOpportunity, TradeRecord, AIAnalysis, UserProfile, SpotSignal, ExchangeKeys, ViewType } from './types';
-import { COINS, EXCHANGES, EXCHANGE_BRANDS, FEE_PERCENTAGE, FIXED_NETWORK_FEE } from './constants.tsx';
+import { COINS, EXCHANGES, EXCHANGE_BRANDS, FEE_PERCENTAGE, FIXED_NETWORK_FEE } from './constants';
 import MarketGrid from './components/MarketGrid';
 import TradeLogs from './components/TradeLogs';
 import IntraExchangeView from './components/IntraExchangeView';

@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { EXCHANGES, EXCHANGE_BRANDS, FEE_PERCENTAGE, FIXED_NETWORK_FEE } from '../constants.tsx';
+import { EXCHANGES, EXCHANGE_BRANDS, FEE_PERCENTAGE, FIXED_NETWORK_FEE } from '../constants';
 import { CoinData, TradeRecord, SpotSignal } from '../types';
 import TradeLogs from './TradeLogs';
 

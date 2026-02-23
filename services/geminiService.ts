@@ -10,8 +10,21 @@ export const analyzeMarketWithGemini = async (
   retries = 3,
   delay = 2000
 ): Promise<AIAnalysis> => {
+  const apiKey = process.env.API_KEY;
+  
+  if (!apiKey) {
+    console.error("Gemini API Key is missing. Please ensure GEMINI_API_KEY is set in the environment.");
+    return {
+      sentiment: 'NEUTRAL',
+      reasoning: 'Neural link offline: API Key not detected. Operating on local heuristic protocols.',
+      riskLevel: 'MEDIUM',
+      recommendedStrategy: 'Manual node monitoring advised while AI link is establishing.',
+      spotSignals: []
+    };
+  }
+
   // Always initialize with the latest API_KEY from process.env
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey });
   
   const prompt = `
     As a world-class AI Quant Trading Robot, analyze this real-time market telemetry:

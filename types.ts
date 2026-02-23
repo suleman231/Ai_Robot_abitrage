@@ -8,6 +8,7 @@ export interface PriceData {
 export interface CoinData {
   symbol: string;
   name: string;
+  basePrice: number;
   prices: PriceData[];
 }
 
